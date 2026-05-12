@@ -265,7 +265,7 @@ export const useBuilderStore = create<BuilderState>()(
     (set, get) => ({
       nodes: seedNodes(),
       drawerStack: [],
-      sidebarExpanded: true,
+      sidebarExpanded: false,
       tourOpen: false,
       tourSeen: false,
 
