@@ -78,10 +78,192 @@ const blankEndPath = (): EndPath => ({
   conditions: [blankCondition()],
 })
 
+const stepData = (over: Partial<StepNodeData> & Pick<StepNodeData, 'kind' | 'label'>): StepNodeData => ({
+  mode: 'Tension',
+  control: 'force',
+  polarity: 'Tension',
+  value: 1,
+  unit: 'kN',
+  reporting: { type: 'dT', value: 10, unit: 's' },
+  endPaths: [],
+  ...over,
+})
+
+const seedNodes = (): AppNode[] => [
+  {
+    id: 'n-setup',
+    type: 'step',
+    position: { x: 80, y: 60 },
+    data: stepData({
+      kind: 'sample-setup',
+      label: 'Sample Setup',
+      mode: 'Idle',
+      control: 'none',
+      polarity: 'Neutral',
+      value: null,
+      unit: null,
+      endPaths: [
+        {
+          id: 'e-setup-load',
+          targetNodeId: 'n-load',
+          conditions: [
+            { id: 'c1', operand: 'time', operator: '>=', value: 5, unit: 's' },
+          ],
+        },
+      ],
+    }),
+  },
+  {
+    id: 'n-load',
+    type: 'step',
+    position: { x: 80, y: 200 },
+    data: stepData({
+      kind: 'constant-load',
+      label: 'Pre-load',
+      mode: 'Tension',
+      control: 'force',
+      polarity: 'Tension',
+      value: 0.5,
+      unit: 'kN',
+      endPaths: [
+        {
+          id: 'e-load-hold',
+          targetNodeId: 'n-hold',
+          conditions: [
+            { id: 'c1', operand: 'time', operator: '>', value: 60, unit: 's' },
+          ],
+        },
+      ],
+    }),
+  },
+  {
+    id: 'n-hold',
+    type: 'step',
+    position: { x: 80, y: 340 },
+    data: stepData({
+      kind: 'hold',
+      label: 'Settle',
+      mode: 'Hold',
+      control: 'none',
+      polarity: 'Neutral',
+      value: 30,
+      unit: 's',
+      endPaths: [
+        {
+          id: 'e-hold-cycle',
+          targetNodeId: 'n-cycle-strain',
+          conditions: [
+            { id: 'c1', operand: 'time', operator: '>=', value: 30, unit: 's' },
+          ],
+        },
+      ],
+    }),
+  },
+  {
+    id: 'n-group',
+    type: 'group',
+    position: { x: 420, y: 40 },
+    style: { width: 360, height: 280 },
+    data: {
+      kind: 'group',
+      label: 'Cycle',
+      description: 'Repeat tension cycle',
+      loops: 6,
+      incrementVariables: [],
+    },
+  },
+  {
+    id: 'n-cycle-strain',
+    type: 'step',
+    parentId: 'n-group',
+    position: { x: 20, y: 50 },
+    data: stepData({
+      kind: 'constant-strain',
+      label: 'Apply Strain',
+      mode: 'Tension',
+      control: 'strain',
+      polarity: 'Tension',
+      value: 1,
+      unit: '%',
+      endPaths: [
+        {
+          id: 'e-strain-rate',
+          targetNodeId: 'n-cycle-rate',
+          conditions: [
+            { id: 'c1', operand: 'strain', operator: '>=', value: 1, unit: '%' },
+          ],
+        },
+      ],
+    }),
+  },
+  {
+    id: 'n-cycle-rate',
+    type: 'step',
+    parentId: 'n-group',
+    position: { x: 20, y: 160 },
+    data: stepData({
+      kind: 'strain-rate',
+      label: 'Release Rate',
+      mode: 'Ramp',
+      control: 'strain-rate',
+      polarity: 'Compression',
+      value: 0.005,
+      unit: '%',
+      endPaths: [
+        {
+          id: 'e-rate-postload',
+          targetNodeId: 'n-postload',
+          conditions: [
+            { id: 'c1', operand: 'time', operator: '>=', value: 120, unit: 's' },
+          ],
+        },
+      ],
+    }),
+  },
+  {
+    id: 'n-postload',
+    type: 'step',
+    position: { x: 420, y: 380 },
+    data: stepData({
+      kind: 'constant-load',
+      label: 'Final Pull',
+      mode: 'Tension',
+      control: 'force',
+      polarity: 'Tension',
+      value: 5,
+      unit: 'kN',
+      endPaths: [
+        {
+          id: 'e-postload-end',
+          targetNodeId: 'n-end',
+          conditions: [
+            { id: 'c1', operand: 'load', operator: '>=', value: 4.5, unit: 'kN' },
+          ],
+        },
+      ],
+    }),
+  },
+  {
+    id: 'n-end',
+    type: 'step',
+    position: { x: 780, y: 380 },
+    data: stepData({
+      kind: 'end',
+      label: 'End',
+      mode: 'Final',
+      control: 'none',
+      polarity: 'Neutral',
+      value: null,
+      unit: null,
+      endPaths: [],
+    }),
+  },
+]
+
 export const useBuilderStore = create<BuilderState>()(
   persist(
     (set, get) => ({
-      nodes: [],
+      nodes: seedNodes(),
       drawerStack: [],
       sidebarExpanded: true,
       tourOpen: false,
@@ -342,7 +524,7 @@ export const useBuilderStore = create<BuilderState>()(
       reset: () => set({ nodes: [], drawerStack: [] }),
     }),
     {
-      name: 'yieldlab.builder.v1',
+      name: 'yieldlab.builder.v2',
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({ nodes: state.nodes, tourSeen: state.tourSeen }),
     },
