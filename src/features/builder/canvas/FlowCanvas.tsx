@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Background,
   BackgroundVariant,
@@ -15,6 +15,7 @@ import {
   type ReactFlowInstance,
   type XYPosition,
 } from '@xyflow/react'
+import { Trash2 } from 'lucide-react'
 
 import { useBuilderStore } from '@/store/builderStore'
 import type { AppNode, NodeKind } from '@/store/types'
@@ -22,6 +23,8 @@ import { StepNode } from './nodes/StepNode'
 import { GroupNode } from './nodes/GroupNode'
 import { ConditionEdge, type ConditionEdgeType } from './edges/ConditionEdge'
 import { useDerivedEdges } from './useDerivedEdges'
+
+type ContextMenuState = { x: number; y: number; nodeId: string; isGroup: boolean }
 
 const DND_MIME = 'application/x-yieldlab-node-kind'
 
@@ -67,8 +70,37 @@ function FlowCanvasInner() {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const rfRef = useRef<ReactFlowInstance<AppNode, ConditionEdgeType> | null>(null)
   const { screenToFlowPosition, getNode } = useReactFlow<AppNode, ConditionEdgeType>()
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
 
   const edges = useDerivedEdges()
+
+  useEffect(() => {
+    if (!contextMenu) return
+    const onDocClick = () => setContextMenu(null)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContextMenu(null)
+    }
+    window.addEventListener('click', onDocClick)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('click', onDocClick)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [contextMenu])
+
+  const onNodeContextMenu = useCallback(
+    (event: React.MouseEvent, node: AppNode) => {
+      event.preventDefault()
+      const rect = wrapperRef.current?.getBoundingClientRect()
+      setContextMenu({
+        x: event.clientX - (rect?.left ?? 0),
+        y: event.clientY - (rect?.top ?? 0),
+        nodeId: node.id,
+        isGroup: node.data.kind === 'group',
+      })
+    },
+    [],
+  )
 
   const handleDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault()
@@ -156,6 +188,12 @@ function FlowCanvasInner() {
         onEdgesChange={onEdgesChange}
         onConnect={connect}
         onNodeClick={onNodeClick}
+        onNodeContextMenu={onNodeContextMenu}
+        onPaneClick={() => setContextMenu(null)}
+        onPaneContextMenu={(e) => {
+          e.preventDefault()
+          setContextMenu(null)
+        }}
         onNodesDelete={onNodesDelete}
         onNodeDragStop={onNodeDragStop}
         defaultEdgeOptions={defaultEdgeOptions}
@@ -170,6 +208,27 @@ function FlowCanvasInner() {
         <MiniMap pannable zoomable className="!bg-white !border !border-slate-200" />
         <Controls showInteractive={false} />
       </ReactFlow>
+
+      {contextMenu && (
+        <div
+          className="absolute z-50 min-w-[180px] rounded-md border border-slate-200 bg-white py-1 text-sm shadow-md"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-red-600 hover:bg-red-50"
+            onClick={() => {
+              removeNode(contextMenu.nodeId)
+              setContextMenu(null)
+            }}
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete {contextMenu.isGroup ? 'group' : 'node'}
+          </button>
+        </div>
+      )}
     </div>
   )
 }
